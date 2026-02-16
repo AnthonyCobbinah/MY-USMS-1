@@ -1,39 +1,60 @@
 const express = require('express');
-const cors = require('cors');
 const { Sequelize, DataTypes } = require('sequelize');
-require('dotenv').config();
+const cors = require('cors');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
+// 1. Database Connection with SSL (Required for Render)
+const dbUrl = process.env.DATABASE_URL;
+
+if (!dbUrl) {
+  console.error("❌ CRITICAL ERROR: DATABASE_URL is missing in Render Environment Variables!");
+  process.exit(1);
+}
+
+const sequelize = new Sequelize(dbUrl, {
   dialect: 'postgres',
-  dialectOptions: { ssl: { require: true, rejectUnauthorized: false } }
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false // Fixes the common "SSL connection required" error
+    }
+  }
 });
 
+// 2. A simple Test Model (Example)
 const Student = sequelize.define('Student', {
-  school_id: { type: DataTypes.INTEGER, allowNull: false },
-  name: { type: DataTypes.STRING, allowNull: false }
+  name: { type: DataTypes.STRING, allowNull: false },
+  email: { type: DataTypes.STRING, unique: true }
 });
 
-// Middleware for Multi-tenancy
-app.use((req, res, next) => {
-  req.schoolId = req.headers['x-school-id'];
-  next();
+// 3. The "Front Door" Route (Fixes "Cannot GET /")
+app.get('/', (req, res) => {
+  res.send('✅ My USMS Backend is officially LIVE and running!');
 });
 
-app.get('/api/students', async (req, res) => {
-  const students = await Student.findAll({ where: { school_id: req.schoolId } });
-  res.json(students);
+// 4. A sample API route to fetch data
+app.get('/students', async (req, res) => {
+  try {
+    const students = await Student.findAll();
+    res.json(students);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/api/students', async (req, res) => {
-  const student = await Student.create({ ...req.body, school_id: req.schoolId });
-  res.json(student);
-});
-
+// 5. Port and Server Start
 const PORT = process.env.PORT || 10000;
-sequelize.sync().then(() => {
-  app.listen(PORT, () => console.log(`Server live on ${PORT}`));
-});
+
+sequelize.sync()
+  .then(() => {
+    console.log('✅ Database connected and synced');
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server is flying on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('❌ Database connection failed:', err);
+  });
