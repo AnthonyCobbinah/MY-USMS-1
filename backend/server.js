@@ -1,16 +1,17 @@
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
 const cors = require('cors');
+const path = require('path'); // Required to find your frontend folders
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 1. Database Connection with SSL (Required for Render)
+// 1. Database Connection
 const dbUrl = process.env.DATABASE_URL;
 
 if (!dbUrl) {
-  console.error("❌ CRITICAL ERROR: DATABASE_URL is missing in Render Environment Variables!");
+  console.error("❌ DATABASE_URL is missing!");
   process.exit(1);
 }
 
@@ -19,42 +20,34 @@ const sequelize = new Sequelize(dbUrl, {
   dialectOptions: {
     ssl: {
       require: true,
-      rejectUnauthorized: false // Fixes the common "SSL connection required" error
+      rejectUnauthorized: false
     }
   }
 });
 
-// 2. A simple Test Model (Example)
-const Student = sequelize.define('Student', {
-  name: { type: DataTypes.STRING, allowNull: false },
-  email: { type: DataTypes.STRING, unique: true }
+// 2. API Routes (Keep these ABOVE the static file code)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Server is healthy' });
 });
 
-// 3. The "Front Door" Route (Fixes "Cannot GET /")
-app.get('/', (req, res) => {
-  res.send('✅ My USMS Backend is officially LIVE and running!');
+// 3. SERVE FRONTEND (This makes your App open)
+// This tells Express where the React "build" folder is
+const buildPath = path.join(__dirname, '../frontend/build');
+app.use(express.static(buildPath));
+
+// 4. THE MAGIC LINK
+// If a user goes to any URL that isn't an API, show the React App
+app.get('*', (req, res) => {
+  res.sendFile(path.join(buildPath, 'index.html'));
 });
 
-// 4. A sample API route to fetch data
-app.get('/students', async (req, res) => {
-  try {
-    const students = await Student.findAll();
-    res.json(students);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 5. Port and Server Start
+// 5. Start Server
 const PORT = process.env.PORT || 10000;
 
 sequelize.sync()
   .then(() => {
-    console.log('✅ Database connected and synced');
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server is flying on port ${PORT}`);
+      console.log(`🚀 App is live at your Render URL!`);
     });
   })
-  .catch(err => {
-    console.error('❌ Database connection failed:', err);
-  });
+  .catch(err => console.error('❌ DB Error:', err));
